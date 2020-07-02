@@ -177,7 +177,7 @@ func (s *Stock) Collect(ch chan<- prometheus.Metric) {
 
 func getSzList() {
 	xlsxFile := "./A股列表.xlsx"
-	txtFile := "./A股列表.txt"
+	txtFile := "./szlist.txt"
 	xlFile, err := xlsx.OpenFile(xlsxFile)
 	if err != nil {
 		panic(err)
@@ -205,26 +205,43 @@ func getSzList() {
 }
 
 func GetSzList() {
-	xlsxFile := "./A股列表.xlsx"
-	xlFile, err := xlsx.OpenFile(xlsxFile)
+	//resp, err := http.Get("http://raw.githubusercontent.com/chentiangang/stock_exporter/master/A股列表.txt")
+	//if err != nil {
+	//	panic(err)
+	//}
+	client := &http.Client{
+		//Timeout: time.Millisecond * 500,
+	}
+
+	req, err := http.NewRequest("GET", "https://raw.githubusercontent.com/chentiangang/stock_exporter/master/A股列表.txt", nil)
+	if err != nil {
+		xlog.LogError("%s", err)
+	}
+
+	req.Header.Add("User-AgenUser-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36")
+	reps, err := client.Do(req)
+	if err != nil {
+		xlog.LogError("%s", err)
+		return
+	}
+
+	result, err := ioutil.ReadAll(reps.Body)
 	if err != nil {
 		panic(err)
 	}
-	for _, sheet := range xlFile.Sheets {
-		for _, row := range sheet.Rows {
-			matchRe := `\d{6}`
-			re := regexp.MustCompile(matchRe)
-			if re.Match([]byte(row.Cells[4].Value)) {
-				stocks["sz"+row.Cells[4].Value] = row.Cells[5].Value
-			}
-		}
+
+	split := strings.Split(string(result), "\n")
+
+	for _, i := range split {
+		fmt.Println(i)
 	}
+
 }
 
 func main() {
 
-	getSzList()
-	os.Exit(1)
+	//getSzList()
+	// os.Exit(1)
 	stock := NewStock()
 	stocks = make(map[string]string, 2000)
 	var exchange string
