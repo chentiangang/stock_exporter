@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -174,6 +175,35 @@ func (s *Stock) Collect(ch chan<- prometheus.Metric) {
 	wg.Wait()
 }
 
+func getSzList() {
+	xlsxFile := "./A股列表.xlsx"
+	txtFile := "./A股列表.txt"
+	xlFile, err := xlsx.OpenFile(xlsxFile)
+	if err != nil {
+		panic(err)
+	}
+
+	tFile, err := os.OpenFile(txtFile, os.O_CREATE|os.O_WRONLY, 0755)
+	if err != nil {
+		panic(err)
+	}
+
+	w := bufio.NewWriter(tFile)
+	defer w.Flush()
+
+	for _, sheet := range xlFile.Sheets {
+		for _, row := range sheet.Rows {
+			matchRe := `\d{6}`
+			re := regexp.MustCompile(matchRe)
+			if re.Match([]byte(row.Cells[4].Value)) {
+
+				//				stocks["sz"+row.Cells[4].Value] = row.Cells[5].Value
+				w.WriteString("sz" + row.Cells[4].Value + "," + row.Cells[5].Value + "\n")
+			}
+		}
+	}
+}
+
 func GetSzList() {
 	xlsxFile := "./A股列表.xlsx"
 	xlFile, err := xlsx.OpenFile(xlsxFile)
@@ -190,7 +220,11 @@ func GetSzList() {
 		}
 	}
 }
+
 func main() {
+
+	getSzList()
+	os.Exit(1)
 	stock := NewStock()
 	stocks = make(map[string]string, 2000)
 	var exchange string
