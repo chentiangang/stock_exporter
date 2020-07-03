@@ -86,16 +86,10 @@ func GetShList() {
 			}
 		}
 	}
-
-	for k, v := range stocks {
-		fmt.Println(k, v)
-	}
 }
 
 func Request(suffix string) (result string) {
-	client := &http.Client{
-		//Timeout: time.Millisecond * 500,
-	}
+	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", "http://hq.sinajs.cn/list="+suffix, nil)
 	if err != nil {
@@ -114,8 +108,7 @@ func Request(suffix string) (result string) {
 	}
 
 	body := bufio.NewReader(reps.Body)
-	defer reps.Body.Close()
-	//utf8Reader := transform.NewReader(body, simplifiedchinese.GBK.NewDecoder())
+	reps.Body.Close()
 
 	res, err := ioutil.ReadAll(body)
 	if err != nil {
@@ -168,7 +161,7 @@ func (s *Stock) Collect(ch chan<- prometheus.Metric) {
 				name,
 				suffix,
 			)
-			fmt.Printf("url: http://hq.sinajs.cn/list=%s\n", suffix)
+			//fmt.Printf("url: http://hq.sinajs.cn/list=%s\n", suffix)
 			wg.Done()
 		}(k, v)
 	}
@@ -205,20 +198,13 @@ func getSzList() {
 }
 
 func GetSzList() {
-	//resp, err := http.Get("http://raw.githubusercontent.com/chentiangang/stock_exporter/master/A股列表.txt")
-	//if err != nil {
-	//	panic(err)
-	//}
-	client := &http.Client{
-		//Timeout: time.Millisecond * 500,
-	}
+	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", "https://raw.githubusercontent.com/chentiangang/stock_exporter/master/A股列表.txt", nil)
+	req, err := http.NewRequest("GET", "https://raw.githubusercontent.com/chentiangang/stock_exporter/master/szlist.txt", nil)
 	if err != nil {
 		xlog.LogError("%s", err)
 	}
 
-	req.Header.Add("User-AgenUser-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36")
 	reps, err := client.Do(req)
 	if err != nil {
 		xlog.LogError("%s", err)
@@ -233,19 +219,22 @@ func GetSzList() {
 	split := strings.Split(string(result), "\n")
 
 	for _, i := range split {
-		fmt.Println(i)
+		v := strings.Split(i, ",")
+		if len(v) == 2 {
+			stocks[v[0]] = v[1]
+		}
 	}
 
 }
 
 func main() {
 
-	//getSzList()
-	// os.Exit(1)
 	stock := NewStock()
 	stocks = make(map[string]string, 2000)
 	var exchange string
+	var port int
 	flag.StringVar(&exchange, "e", "all", "")
+	flag.IntVar(&port, "p", 8080, "")
 	flag.Parse()
 
 	switch exchange {
@@ -261,5 +250,5 @@ func main() {
 	reg := prometheus.NewPedanticRegistry()
 	reg.MustRegister(stock)
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
