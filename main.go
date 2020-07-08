@@ -24,15 +24,21 @@ import (
 )
 
 type Stock struct {
-	desc *prometheus.Desc
+	StockCurrentPrice *prometheus.Desc
+	StockCurrentADR   *prometheus.Desc
 }
 
 var stocks map[string]string
 
 func NewStock() *Stock {
 	return &Stock{
-		desc: prometheus.NewDesc("stock_current_price",
+		StockCurrentPrice: prometheus.NewDesc("stock_current_price",
 			"query stock current price",
+			[]string{"name", "code"},
+			prometheus.Labels{},
+		),
+		StockCurrentADR: prometheus.NewDesc("stock_current_adr",
+			"stock Rate of rise and fall",
 			[]string{"name", "code"},
 			prometheus.Labels{},
 		),
@@ -108,9 +114,9 @@ func Request(suffix string) (result string) {
 	}
 
 	body := bufio.NewReader(reps.Body)
-	reps.Body.Close()
 
 	res, err := ioutil.ReadAll(body)
+	reps.Body.Close()
 	if err != nil {
 		xlog.LogError("%s", err)
 		return
@@ -119,10 +125,15 @@ func Request(suffix string) (result string) {
 	return string(res)
 }
 
-func ParseResult(result string) float64 {
+type Result struct {
+	CurrentPrice string
+	ClosePrice   string
+}
+
+func ParseResult(result string) Result {
 	if result == "" {
 		xlog.LogError("result: %s", result)
-		return 0.0
+		return Result{}
 	}
 	split := strings.Split(result, "=")
 	result = split[1]
@@ -132,9 +143,21 @@ func ParseResult(result string) float64 {
 
 	if len(list) != 34 {
 		xlog.LogError("list: %s,{len: %d},result: %s", list, len(list), result)
-		return 0.0
+		return Result{}
 	}
-	return parseFloat(list[3])
+	return Result{ClosePrice: list[2], CurrentPrice: list[3]}
+}
+
+func (r Result) currentPrice() float64 {
+	return parseFloat(r.CurrentPrice)
+}
+
+func (r Result) closePrice() float64 {
+	return parseFloat(r.ClosePrice)
+}
+
+func (r Result) ADR() float64 {
+	return (r.currentPrice() - r.closePrice()) / r.closePrice() * 100
 }
 
 func parseFloat(str string) float64 {
@@ -147,7 +170,8 @@ func parseFloat(str string) float64 {
 }
 
 func (s *Stock) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.desc
+	ch <- s.StockCurrentPrice
+	ch <- s.StockCurrentADR
 }
 
 func (s *Stock) Collect(ch chan<- prometheus.Metric) {
@@ -155,9 +179,18 @@ func (s *Stock) Collect(ch chan<- prometheus.Metric) {
 	wg.Add(len(stocks))
 	for k, v := range stocks {
 		go func(suffix string, name string) {
-			ch <- prometheus.MustNewConstMetric(s.desc,
+			r := ParseResult(Request(suffix))
+			//xlog.LogDebug("request: http://hq.sinajs.cn/list=%s", suffix)
+			ch <- prometheus.MustNewConstMetric(s.StockCurrentPrice,
 				prometheus.GaugeValue,
-				ParseResult(Request(suffix)),
+				r.currentPrice(),
+				name,
+				suffix,
+			)
+
+			ch <- prometheus.MustNewConstMetric(s.StockCurrentADR,
+				prometheus.GaugeValue,
+				r.ADR(),
 				name,
 				suffix,
 			)
@@ -189,8 +222,6 @@ func getSzList() {
 			matchRe := `\d{6}`
 			re := regexp.MustCompile(matchRe)
 			if re.Match([]byte(row.Cells[4].Value)) {
-
-				//				stocks["sz"+row.Cells[4].Value] = row.Cells[5].Value
 				w.WriteString("sz" + row.Cells[4].Value + "," + row.Cells[5].Value + "\n")
 			}
 		}
